@@ -1,4 +1,4 @@
-# precision-recall
+# precision-recall-sensitivity
 This compressed file contains the source code and raw data for paper Precision/Recall/Sensitivity submitted to TPDS  
 Please contact Duong Nguyen (nguye476@msu.edu) if you have any question.  
 

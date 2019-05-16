@@ -8,7 +8,7 @@ TPDS-Precision-Recall-Upload
   |  
   +- program: source code  
     |  
-    +- aws-experiment: source code for running programs and monitors on Amazon AWS  
+    +- aws-experiment: source code for running programs and monitors on Amazon Web Service (AWS)  
       |  
       +- interval-based  
         |  
@@ -17,6 +17,8 @@ TPDS-Precision-Recall-Upload
         +- wcp-process: source code of programs  
           |  
           +- wcp_process_compile_and_export_jar.sh: script for compiling program  
+    |
+    +- simulations: source code for simulations
   |  
   +- data: experiment and simulation results  
 ```  

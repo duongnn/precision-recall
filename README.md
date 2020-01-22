@@ -1,6 +1,7 @@
 # precision-recall-sensitivity
-This compressed file contains the source code and raw data for paper Precision/Recall/Sensitivity submitted to TPDS  
-Please contact Duong Nguyen (nguye476@msu.edu) if you have any question.  
+This is the supplementary materials (source code and raw experimental results) for the paper Precision, Recall, and Sensitivity of Monitoring Partially Synchronous Distributed Systems.
+
+Please contact Duong Nguyen (nguye476@msu.edu) for any questions.  
 
 Content  
 ```
@@ -21,4 +22,6 @@ TPDS-Precision-Recall-Upload
     +- simulations: source code for simulations
   |  
   +- data: experiment and simulation results  
+
+TPDS-Precision-Recall-Upload.zip: the whole content in a zip file
 ```  

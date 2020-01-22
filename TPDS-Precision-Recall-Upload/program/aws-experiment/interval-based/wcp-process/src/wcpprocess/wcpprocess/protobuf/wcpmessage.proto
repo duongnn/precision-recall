@@ -1,0 +1,17 @@
+syntax = "proto2";
+package protobuf;
+
+option java_package = "wcpprocess.protobuf";
+option java_outer_classname = "WcpMessageProtos";
+
+// Hybrid vector clock
+message MessageHVC {
+    required int32 senderProcId = 1;
+    repeated int64 hvcTimestamp= 2;
+}
+
+// Message communicated between clients
+message ProcessMessage {
+  required MessageHVC senderHvc = 1;
+  required string messageContent = 2;
+}

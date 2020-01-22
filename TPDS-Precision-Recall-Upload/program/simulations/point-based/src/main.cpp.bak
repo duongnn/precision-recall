@@ -1,0 +1,340 @@
+#include <vector>
+#include <string>
+#include <sstream>
+#include <numeric>
+#include <random>
+#include <algorithm> // for for_each
+#include <iomanip>
+
+#include "Process.h"
+#include "utility.h"
+#include "runsimulation.h"
+
+using namespace std;
+
+#define INF 1000000	  //infinity
+
+
+/*
+  Define and assigned global variable in main.cpp
+*/
+
+int number_of_processes = 10;   // number of processes/nodes
+
+int delta = 1;          // minimum message delay      
+int epsilon = 100;       // uncertainty windows
+int delta_max = delta;  
+double alpha = 0.05;     // message rate
+
+int run_up_to = 100000; // total number of physical clock cycles in simulation
+int absolute_time;      // index of physical clock cycles
+
+distance_matrix D;
+probability_matrix prob_matrix;
+string topology_file_name;
+string prob_matrix_file_name;
+
+// For Garg's algorithm
+Token globalToken;
+double localPredRate = 0.1;   // randomly generate localPredicate according to this parameter
+int num_of_bins = 10;     // number of bin in the historgram
+int num_of_runs = 10;       // number of run for each experiments
+
+#ifdef _DEBUG
+
+// for debug Garg's algorithm
+ofstream debug_out("debug/wcp_debug_out");
+vector<ofstream> debug_candidate;
+
+#endif
+
+
+
+/*
+  InitiAllConfiguration() - initialize simulation paramters from input file
+                            initialize global variables
+*/
+
+void InitAllConfiguration(const string& parameter_file_name) {
+  int i;
+	ifstream in(parameter_file_name);   // param input file
+	string content;
+
+	if (!in.is_open()) {
+		printf("Error: can't open parameter file\n");
+		exit(1);
+	}
+
+    /* no need to parse parameter file since params in fed via commandline argument
+  // parse each line of param file one by one
+	while (getline(in, content)) {
+		vector<string> split_equalsign = Utility::split(content, '=');
+
+		for (string& s : split_equalsign) {
+			cout.width(30);
+			cout << s << " | ";
+		}
+		printf("\n");
+		string s0 = split_equalsign[0];
+		string s1 = split_equalsign[1];
+
+    //cout << "split_equalsign[0] = " << split_equalsign[0] ;
+    //cout << "split_equalsign[1] = " << split_equalsign[1] ;
+
+
+		if (s0 == "delta") {
+			delta = atoi(s1.c_str());
+		}
+		else if (s0 == "epsilon") {
+			epsilon = atoi(s1.c_str());
+		}
+		else if (s0 == "alpha") {
+			alpha = atof(s1.c_str());
+		}
+		else if (s0 == "run_up_to") {
+			run_up_to = atoi(s1.c_str());
+		}
+		else if (s0 == "number_of_processes") {
+			number_of_processes = atoi(s1.c_str());
+		} 
+		else if (s0 == "local_pred_rate"){
+		  localPredRate = atof(s1.c_str());
+		}
+		else if (s0 == "topology_file") {
+            topology_file_name = s1;
+
+            cout << "get topology_file" << " is " << s1 << " " << endl;
+
+		}
+		else if (s0 == "probability_matrix_file") {
+			prob_matrix_file_name = s1;
+		}
+		else if (s0 == "num_of_bins"){
+		    num_of_bins = atoi(s1.c_str());
+		}
+		else if (s0 == "num_of_runs"){
+		    num_of_runs = atoi(s1.c_str());
+		}
+		else { 
+		  printf("else;\n"); 
+		}
+	}
+	
+    */
+
+
+	
+	delta_max = delta;
+	D = Utility::AllPairShortestPaths(Utility::ReadGraph(topology_file_name));
+	prob_matrix = Utility::ReadProbabilityMatrix(prob_matrix_file_name);
+
+  #ifdef _DEBUG
+
+  // init debug output file
+  debug_candidate = vector<ofstream>(number_of_processes);
+  for(i = 0; i < number_of_processes; i++){
+    debug_candidate.at(i).open("debug/wcp_debug_candidate_" + std::to_string(i));
+  }
+
+  #endif
+
+
+  /* initialize global token */
+
+  globalToken.setPid(0);    // process 0 will have global token first
+
+  // mark all candidate as invalid
+  globalToken.setColor(vector<int>(number_of_processes, RED));
+
+  // set initial value for each process' candidate
+  globalToken.setSnapshot(vector<Candidate>(number_of_processes, Candidate()));
+  for(i = 0; i < number_of_processes; i++){
+  
+    HVC initTs = HVC(vector<int>(number_of_processes, -1*epsilon-1),1);
+    Candidate initCand = Candidate(i, 0, initTs);
+    
+    globalToken.setProcessCandidate(initCand, i);
+
+  }
+  
+
+}
+
+
+/* utility function for paring commandline argument */
+
+enum optionCode{
+    DELTA,
+    EPSILON,
+    ALPHA,
+    RUN_UP_TO,
+    NUMBER_OF_PROCESSES,
+    PROBABILITY_MATRIX_FILE,
+    LOCAL_PRED_RATE,
+    NUM_OF_BINS,
+    NUM_OF_RUNS,
+    TOPOLOGY_FILE,
+    UNDEFINED
+};
+
+optionCode getOptionCode(const string optionString){
+    if(optionString == "-d") return DELTA;
+    if(optionString == "-e") return EPSILON;
+    if(optionString == "-a") return ALPHA;  
+    if(optionString == "-u") return RUN_UP_TO;
+    if(optionString == "-p") return NUMBER_OF_PROCESSES;
+    if(optionString == "-m") return PROBABILITY_MATRIX_FILE;
+    if(optionString == "-l") return LOCAL_PRED_RATE;
+    if(optionString == "-b") return NUM_OF_BINS;
+    if(optionString == "-r") return NUM_OF_RUNS;
+    if(optionString == "-t") return TOPOLOGY_FILE;
+    
+    return UNDEFINED;
+}
+
+vector<string> splitArg(const string& s){
+    vector<string> result;   
+    string item1, item2;
+    
+    item1 = s.substr(0,2);
+    result.push_back(item1);
+    item2 = s.substr(2,string::npos);
+    result.push_back(item2);
+    
+    //cout << "   item1 = " << item1 << "  item2 = " << item2 << endl;
+    
+    return result;
+}
+
+int parseArg(int argc, char* argv[]){
+    int i;
+    vector<string> currentArg;
+    
+    for(i = 1; i < argc; i++){
+        //cout << "arg_" << i << " = " << argv[i] << endl;
+
+        currentArg = splitArg(argv[i]);
+
+        
+        switch(getOptionCode(currentArg.at(0))){
+        case DELTA:
+            delta = atoi(currentArg.at(1).c_str());
+            cout.width(30);
+            cout << "delta = " << delta << endl;
+            break;
+        case EPSILON:
+            epsilon = atoi(currentArg.at(1).c_str());
+            cout.width(30);
+            cout << "epsilon = " << epsilon << endl;
+            break;
+        case ALPHA:
+            alpha = atof(currentArg.at(1).c_str());
+            cout.width(30);
+            cout << "alpha = " << alpha << endl;
+            break;
+        case RUN_UP_TO:
+            run_up_to = atoi(currentArg.at(1).c_str());
+            cout.width(30);
+            cout << "run_up_to = " << run_up_to << endl;
+            break;
+        case NUMBER_OF_PROCESSES:
+            number_of_processes = atoi(currentArg.at(1).c_str());
+            cout.width(30);
+            cout << "number_of_processes = " << number_of_processes << endl;
+            break;
+        case PROBABILITY_MATRIX_FILE:
+            prob_matrix_file_name = currentArg.at(1);
+            cout.width(30);
+            cout << "prob_matrix_file_name = " << prob_matrix_file_name << endl;
+            break;
+        case LOCAL_PRED_RATE:
+            localPredRate = atof(currentArg.at(1).c_str());
+            cout.width(30);
+            cout << "localPredRate = " << localPredRate << endl;
+            break;
+        case NUM_OF_BINS:
+            num_of_bins = atoi(currentArg.at(1).c_str());
+            cout.width(30);
+            cout << "num_of_bins = " << num_of_bins << endl;
+            break;
+        case NUM_OF_RUNS:
+            num_of_runs = atoi(currentArg.at(1).c_str());
+            cout.width(30);
+            cout << "num_of_runs = " << num_of_runs << endl;
+            break;
+        case TOPOLOGY_FILE:
+            topology_file_name = currentArg.at(1);
+            cout.width(30);
+            cout << "topology_file_name = " << topology_file_name << endl;
+            break;
+        default:
+            cout << "ERROR: undefined option" << currentArg.at(0) << endl;
+            exit(1);
+            
+        }
+        
+    }
+    
+    return 0;
+}
+
+/* main function */
+
+int main(int argc, char* argv[]) {
+    vector<vector<int>> maxTimeDiffAllRun;
+    vector<bin> histogram;
+    
+    
+    // parsing commandline argument
+    parseArg(argc, argv);
+    
+	InitAllConfiguration("parameters.in.linux");
+
+
+    for(int i = 0; i < num_of_runs; i++){  	
+        cout << "run " << i << " ..." << endl;
+	    vector<int> thisRun = RunSimulation::run(RAND_UNICAST, "Delay-n1000,run1000,alpha0d1,eps100,delta1");
+	    
+	    if(thisRun.size() == 0)
+	        cout << "    No snapshot found " << endl;
+	    else
+    	    maxTimeDiffAllRun.push_back(thisRun);
+
+    }
+
+    stringstream stream;
+    string mystr;
+    
+    string filename = string("wcp_histogram") + string("_p") + to_string(number_of_processes);
+
+//    filename = filename + string("_a") + to_string(alpha);
+    stream << fixed << setprecision(2) << alpha;
+    mystr = stream.str();
+    filename = filename + string("_a") + mystr;
+
+    filename = filename + string("_e") + to_string(epsilon);
+        
+//    filename = filename + string("_l") + to_string(localPredRate);
+    stream << fixed << setprecision(2) << localPredRate;
+    mystr = stream.str();
+    filename = filename + string("_l") + mystr;
+
+    ofstream wcp_histogram(filename);
+    
+    
+    histogram = Utility::makeHistogram(maxTimeDiffAllRun, num_of_bins);
+    Utility::displayHistogram(histogram, wcp_histogram);
+    
+  // after this main loop, all processes have terminated and no global predicate found
+  // cout << "***** FAILURE: No global predicate found " << endl;
+  
+//  if(snapshotCount > 0){
+//    cout << "***** SUCCESS: " << snapshotCount << " snapshots found" << endl;    
+//  }
+//	else
+//	  cout << "***** FAILURE: No global predicate found " << endl;
+//	return EXIT_FAILURE;
+
+
+}
+
